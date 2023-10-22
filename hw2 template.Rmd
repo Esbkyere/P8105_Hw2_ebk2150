@@ -5,30 +5,107 @@ output: github_document
 
 ```{r}
 library(tidyverse)
+library(readxl)
 ```
 
 ##Load the faslitter data
 
 ```{r}
-pols_df = read_csv("./hw2data/pols-month.csv") %>% 
- janitor::clean_names() %>% 
- separate(mon, into = c("year", "month", "day")) %>% 
- mutate(month = recode(month, `01` = "jan", `02` = "feb",`03` = "mar", `04` = "apr", `05` = "may", `06` = "jun", `07` = "jul", `08` = "aug", `09` = "sep", `10` = "oct", `11` = "nov", `12` = "dec" )) %>% 
- mutate(president = prez_dem + prez_gop) %>% 
- select(-day)
+month_df = 
+  tibble(
+    month_num = 1:12,
+    month_abb = month.abb,
+    month = month.name
+  )
+pols = read_csv("./hw2data/pols-month.csv")
+pols = read_csv("./hw2data/pols-month.csv") |> 
+ separate(mon,  into = c("year", "month_num", "day"), convert = TRUE) |> 
+ mutate(president = recode(prez_gop, "0" = "dem", "1" = "gop", "2" = "gop"))  |> 
+  left_join(x = _, y = month_df) |> 
+ select(year, month, everything(), -day, -starts_with("prez"))
+```
+
+
+
+
+
+```{r clean_538_snp}
+snp = 
+  read_csv(
+    "./hw2data/snp.csv",
+    col_types = cols(date = col_date(format = "%m/%d/%y"))) |>
+  separate(date, into = c("year", "month_num", "day"), convert = TRUE) |>
+  mutate(
+    year = if_else(year > 2023, year - 100, year)) |> 
+  left_join(x = _, y = month_df) |> 
+  select(year, month, close) 
+```
+
+```{r clean_538_unemp}
+unemp = 
+  read_csv("./hw2data/unemployment.csv") |>
+  rename(year = Year) |>
+  pivot_longer(
+    Jan:Dec, 
+    names_to = "month_abb",
+    values_to = "unemployment"
+  ) |> 
+  left_join(x = _, y = month_df) |> 
+  select(year, month, unemployment)
+
+
+```
+
+
+```{r merge data_538}
+data_538 = 
+  left_join(pols, snp) |>
+  left_join(x = _, y = unemp)
+  
+str(data_538)
 ```
 
 ```{r}
-snp_df = read_csv("./hw2data/snp.csv") %>% 
- janitor::clean_names() %>% 
- separate(date, into = c("year", "month", "day")) %>% 
- mutate(month = recode(month, `1` = "jan", `2` = "feb",`3` = "mar", `4` = "apr", `5` = "may", `6` = "jun", `7` = "jul", `8` = "aug", `9` = "sep", `10` = "oct", `11` = "nov", `12` = "dec" )) %>% 
- arrange(year, month) 
+mr_trashwheel =
+  read_excel("./hw2data/202207 Trash Wheel Collection Data.xlsx",
+            sheet = "Mr. Trash Wheel", range = cell_cols("A:N")) |>
+            janitor::clean_names() |>
+              drop_na(dumpster) |>
+            mutate( wheel = "Mr",
+                    year = as.numeric(year),
+                    homes_powered = weight_tons * 500 / 30)
+  
+```
+
+```{r}
+prof_trash = 
+  read_excel("./hw2data/202207 Trash Wheel Collection Data.xlsx",
+            sheet = "Professor Trash Wheel", range = cell_cols("A:M")) |>
+            janitor::clean_names() |>
+            drop_na(dumpster) |>
+            mutate( wheel = "Prof",
+            homes_powered = weight_tons * 500 / 30)
+```
+
+```{r}
+gwynnda_trash = 
+  read_excel(
+    "./hw2data/202207 Trash Wheel Collection Data.xlsx",
+    sheet = "Gwynnda Trash Wheel", range = cell_cols("A:K")) |>
+  janitor::clean_names() |>
+  drop_na(dumpster) |>
+  mutate(
+    wheel = "Gwynnda",
+    homes_powered = weight_tons * 500 / 30)
 ```
 
 
 
+```{r}
+combined_trashwheel_df = 
+    bind_rows(mr_trashwheel, prof_trash, gwynnda_trash)
+```
 
-
+Total weight of trash(in tons) collected by Professor Trashwheel was `r combined_trashwheel_df |> filter(wheel == "Prof") |> pull(weight_tons) |> sum()` In July 2021, the total number of cigarette butts collected by Gwynnda is `r combined_trashwheel_df |> filter(wheel == "Gwynnda, year == 2021, month == "July") |> pull(cigarette_butts) |> sum()`
 
 
